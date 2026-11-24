@@ -1,121 +1,120 @@
-# restep-mcp (prototipo)
+# restep-mcp (prototype)
 
-Adaptador que expone cualquier API Restep 1 como servidor
-[MCP](https://modelcontextprotocol.io), para que la usen Claude, ChatGPT u otros agentes.
-Un solo archivo, Node 18+, sin dependencias. No forma parte de la especificación: es una
-herramienta para probar la idea que salió del council sobre agentes (noviembre de 2026).
+Adapter that exposes any Restep 1 API as an [MCP](https://modelcontextprotocol.io) server, so
+Claude, ChatGPT or other agents can use it.
+A single file, Node 18+, no dependencies. It is not part of the specification: it is a tool to
+try out the idea that came out of the council on agents (November 2026).
 
 ## Idea
 
-En lugar de una herramienta por endpoint (que empeora la elección de herramienta cuanto más
-crece la API), expone siempre las mismas, construidas a partir del documento de
-descubrimiento (§4.2):
+Instead of one tool per endpoint (which makes tool choice worse the bigger the API gets), it
+always exposes the same tools, built from the discovery document (§4.2):
 
-| Herramienta | Petición Restep | Anotaciones MCP |
+| Tool | Restep request | MCP annotations |
 |---|---|---|
-| `describe` | `GET` de la raíz; con `collection`, solo esa colección | solo lectura |
-| `list` | `GET /coleccion` con `filter`, `named_filters` (filtros con nombre, §6.1, sin operadores), `sort`, `fields`, `include` (con `relations`, §9), `limit`, `count`; o el `next` tal cual (§5.2) | solo lectura |
-| `get` | `GET /coleccion/id`, con `fields` e `include` | solo lectura |
-| `create` | `POST /coleccion`, con `Idempotency-Key` si se pasa | aditiva, no idempotente |
-| `update` | `PATCH` con Merge Patch, con `If-Match` si se pasa | destructiva, idempotente |
-| `delete` | `DELETE`, con `If-Match` si se pasa | destructiva, idempotente |
-| `action` | `POST /coleccion/id:nombre` (solo con la extensión `actions`) | destructiva por defecto |
-| `get_singleton` | `GET` de un recurso suelto (§5.9), con `fields` si hay `query` (solo si la API declara alguno) | solo lectura |
-| `update_singleton` | `PATCH` de un recurso suelto, con `If-Match` si se pasa | destructiva, idempotente |
+| `describe` | `GET` of the root; with `collection`, only that collection | read-only |
+| `list` | `GET /collection` with `filter`, `named_filters` (named filters, §6.1, no operators), `sort`, `fields`, `include` (with `relations`, §9), `limit`, `count`; or `next` as is (§5.2) | read-only |
+| `get` | `GET /collection/id`, with `fields` and `include` | read-only |
+| `create` | `POST /collection`, with `Idempotency-Key` if given | additive, not idempotent |
+| `update` | `PATCH` with Merge Patch, with `If-Match` if given | destructive, idempotent |
+| `delete` | `DELETE`, with `If-Match` if given | destructive, idempotent |
+| `action` | `POST /collection/id:name` (only with the `actions` extension) | destructive by default |
+| `get_singleton` | `GET` of a singleton (§5.9), with `fields` if there is `query` (only if the API declares any) | read-only |
+| `update_singleton` | `PATCH` of a singleton, with `If-Match` if given | destructive, idempotent |
 
-- El argumento `collection` es un `enum` con las colecciones del discovery, y las
-  herramientas de `query` y `writes` solo ofrecen sus argumentos si el servidor anuncia el
-  perfil.
-- Los errores llegan al agente enteros, como `problem+json` y con `isError`. Las
-  instrucciones del servidor le explican qué significan `unsupported_parameter` (no
-  reintentar) e `invalid_parameter` (corregir y reintentar). Ante un `unsupported_parameter`,
-  el adaptador añade `hint` con los filtros y claves de orden que sí ofrece la colección.
-- `if_match` acepta el ETag con o sin comillas.
-- Con `RESTEP_TOKEN`, solo las peticiones al origen de la API llevan `Authorization: Bearer`. Cada salto de redirección se comprueba; los enlaces de otro origen se leen sin credenciales. Las escrituras a otro origen y las redirecciones de escrituras se rechazan.
-- Con `RESTEP_LANGUAGE` (por ejemplo `es`), cada petición lleva ese `Accept-Language`, así que los textos de la API (errores, descripciones del discovery) llegan en ese idioma si lo ofrece (§5.6). Los datos no cambian.
-- Si alguna colección declara `language_maps` (§3), las descripciones de las herramientas explican los mapas de idioma: qué traducción mostrar sin inventar las que faltan, cómo filtrar por una traducción exacta (`name.es-mx`) y cómo se fusionan en un `update`.
-- Si alguna colección declara `inherit` (§11.6) y la API anuncia la extensión con
-  `"restep": "1.0-draft.6"`, explican que el campo efectivo es de solo lectura y que se escribe el propio (`null` para volver a heredar). Si el agente escribe el efectivo y recibe `read_only`, el adaptador añade `hint` con el campo que tiene que escribir.
+- The `collection` argument is an `enum` with the collections from discovery, and the `query`
+  and `writes` tools only offer their arguments if the server announces the profile.
+- Errors reach the agent whole, as `problem+json` and with `isError`. The server instructions
+  explain what `unsupported_parameter` (do not retry) and `invalid_parameter` (fix and retry)
+  mean. On an `unsupported_parameter`, the adapter adds a `hint` with the filters and sort keys
+  the collection does offer.
+- `if_match` accepts the ETag with or without quotes.
+- With `RESTEP_TOKEN`, only requests to the API's origin carry `Authorization: Bearer`. Every redirect hop is checked; links on another origin are read without credentials. Writes to another origin and redirects of writes are rejected.
+- With `RESTEP_LANGUAGE` (for example `es`), every request carries that `Accept-Language`, so the API's texts (errors, discovery descriptions) arrive in that language if it offers it (§5.6). The data does not change.
+- If any collection declares `language_maps` (§3), the tool descriptions explain language maps: which translation to show without making up missing ones, how to filter by an exact translation (`name.es-mx`) and how they merge on an `update`.
+- If any collection declares `inherit` (§11.6) and the API announces the extension with
+  `"restep": "1.0-draft.6"`, they explain that the effective field is read-only and that the own field is the one to write (`null` to inherit again). If the agent writes the effective field and gets `read_only`, the adapter adds a `hint` with the field it has to write.
 
-## Uso
+## Usage
 
 ```bash
-npx restep-mcp http://localhost:8080/          # MCP por stdio
-npx restep-mcp http://localhost:8080/ --http   # MCP en http://127.0.0.1:8788/mcp
+npx restep-mcp http://localhost:8080/          # MCP over stdio
+npx restep-mcp http://localhost:8080/ --http   # MCP at http://127.0.0.1:8788/mcp
 ```
 
-En Claude Code:
+In Claude Code:
 
 ```bash
 claude mcp add restep -- npx -y restep-mcp http://localhost:8080/
 ```
 
-En la configuración JSON de otros clientes (Claude Desktop, Cursor…):
+In the JSON config of other clients (Claude Desktop, Cursor…):
 
 ```json
 { "mcpServers": { "restep": { "command": "npx", "args": ["-y", "restep-mcp", "http://localhost:8080/"] } } }
 ```
 
-## Límites
+## Limits
 
-- El transporte HTTP es mínimo: responde cada `POST` con JSON, sin flujo SSE ni sesiones, y
-  sin OAuth propio (solo escucha en `127.0.0.1` y rechaza `Origin` no locales).
-- De `relations` solo expone `include` (§9): se comprueba antes de enviar que cada tramo sea una
-  relación con `"include": true` y que la ruta no pase de `include_depth` (1 si no lo declara); una
-  relación a varias colecciones solo puede ir al final. No expone `sync`, `batch`, `filter-expr`
-  ni `query-method`.
-- Ofrece `create`, `update` y `delete` para todas las colecciones. Los `methods`,
-  `item_methods` y `schemas` del borrador 4 (§4.3) le llegan al agente a través de `describe`,
-  pero el adaptador todavía no los usa para quitar herramientas ni para validar antes de enviar.
-- Las acciones usan `POST`, salvo las declaradas con `"method": "GET"` (§11.1).
-- Del borrador 6 no implementa: crear o enlazar relaciones con su `href` (el agente escribe el
-  cuerpo; §5.1); interpretar `deprecations` o la cabecera `Deprecation` (llegan al agente tal
-  cual en `describe` y en `headers`); `collations`, `reasons` y `parent` solo llegan en
-  `describe`; `describe` con `collection` no acepta un recurso suelto (sale en el `describe`
-  completo). Los textos de la API llegan al agente dentro del JSON del resultado de cada
-  herramienta, que los delimita, pero no se marcan aparte (§4.3 lo pide como DEBERÍA). El
-  adaptador solo hace las peticiones que pide el agente con sus herramientas: que el agente no
-  haga una escritura solo porque se lo pida un texto de la API (§4.3) depende del agente; las
-  instrucciones del servidor se lo recuerdan.
+- The HTTP transport is minimal: it answers each `POST` with JSON, with no SSE stream or
+  sessions, and no OAuth of its own (it only listens on `127.0.0.1` and rejects non-local
+  `Origin`).
+- Of `relations` it only exposes `include` (§9): before sending it checks that each step is a
+  relation with `"include": true` and that the path is no deeper than `include_depth` (1 if not
+  declared); a relation to several collections can only come last. It does not expose `sync`,
+  `batch`, `filter-expr` or `query-method`.
+- It offers `create`, `update` and `delete` for every collection. The draft 4 `methods`,
+  `item_methods` and `schemas` (§4.3) reach the agent through `describe`, but the adapter does not
+  yet use them to remove tools or to validate before sending.
+- Actions use `POST`, except those declared with `"method": "GET"` (§11.1).
+- Not implemented from draft 6: creating or linking relations with their `href` (the agent writes
+  the body; §5.1); interpreting `deprecations` or the `Deprecation` header (they reach the agent
+  as is in `describe` and in `headers`); `collations`, `reasons` and `parent` only arrive in
+  `describe`; `describe` with `collection` does not accept a singleton (it appears in the full
+  `describe`). The API's texts reach the agent inside the JSON result of each tool, which
+  delimits them, but they are not marked separately (§4.3 asks for it as a SHOULD). The adapter
+  only makes the requests the agent asks for with its tools: whether the agent refrains from a
+  write just because an API text tells it to (§4.3) is up to the agent; the server instructions
+  remind it.
 
-## Borrador 6: lo que hace como cliente (§12.2)
+## Draft 6: what it does as a client (§12.2)
 
-- **Versión (§1.1).** Acepta `restep` con sufijo. Si no sigue la gramática o la versión mayor no
-  es 1, no es Restep 1: `describe` y las demás herramientas fallan con el motivo, sin suponer
-  solo `core`.
-- **Partes experimentales (§1.2).** Solo explica y da pistas de `inherit` con la extensión
-  anunciada y `"restep": "1.0-draft.6"`; con otra versión, no. Un `from` desconocido en
-  `_inherited` se explica como `"hidden"`. `sync`, `batch`, `filter-expr` y `query-method` no
-  tienen herramienta.
-- **Valores desconocidos (§4.2).** Un filtro o filtro con nombre con un `type` desconocido, un
-  operador fuera de §6.1 y una acción con un `on` o un `method` desconocidos no se usan: la
-  herramienta falla antes de enviar.
-- **Recursos sueltos (§5.9).** `get_singleton` y `update_singleton`; se ignoran los que tienen
-  plantilla en `path` o `parent`.
-- **`id_from` (§5.1).** Con un valor desconocido, `create` no manda un cuerpo con `id`. La
-  descripción de `create` explica `"client"` y `"either"`.
-- **`idempotency.anonymous: false` (§7.1).** Sin `RESTEP_TOKEN`, `create` y `action` no ofrecen
-  `idempotency_key` y la rechazan si llega.
-- **Enlaces (§3).** Solo sigue enlaces `https` o con el esquema de la raíz; las credenciales
-  solo van a su origen.
+- **Version (§1.1).** Accepts `restep` with a suffix. If it does not follow the grammar or the
+  major version is not 1, it is not Restep 1: `describe` and the other tools fail with the
+  reason, without assuming plain `core`.
+- **Experimental parts (§1.2).** It only explains and gives hints about `inherit` with the
+  extension announced and `"restep": "1.0-draft.6"`; with another version, it does not. An
+  unknown `from` in `_inherited` is explained as `"hidden"`. `sync`, `batch`, `filter-expr` and
+  `query-method` have no tool.
+- **Unknown values (§4.2).** A filter or named filter with an unknown `type`, an operator outside
+  §6.1 and an action with an unknown `on` or `method` are not used: the tool fails before
+  sending.
+- **Singletons (§5.9).** `get_singleton` and `update_singleton`; those with a template in `path`
+  or with `parent` are ignored.
+- **`id_from` (§5.1).** With an unknown value, `create` does not send a body with `id`. The
+  `create` description explains `"client"` and `"either"`.
+- **`idempotency.anonymous: false` (§7.1).** Without `RESTEP_TOKEN`, `create` and `action` do not
+  offer `idempotency_key` and reject it if it arrives.
+- **Links (§3).** It only follows links that are `https` or use the root's scheme; credentials
+  only go to its origin.
 
-## Pruebas
+## Tests
 
-`node --test tools/restep-mcp/test.mjs` (o `node tools/restep-mcp/test.mjs`) comprueba
-credenciales por origen, redirecciones, bucles, esquemas de los enlaces y rechazo de escrituras
-fuera del origen sin abrir puertos; y, de punta a punta por stdio, el borrador 6 contra el
-servidor de referencia (puerto 8961) y un servidor simulado (8962): versión con sufijo, otra
-versión mayor, el recurso suelto `shop`, valores desconocidos, `id_from`, `anonymous: false` e
-`inherit` según el borrador declarado. Contra la referencia prueba también la subcolección
-`reviews` con `parent_ids` (y su `404` sin libro), `include` con profundidad 2 y sus errores
-locales, la relación `highlight` seguida por su `href`, la polimórfica `showcase` por su `type`, y
-las acciones `low_stock` (`GET` de colección), `restock` (`POST` de elemento con `input`, y su `422`),
-`find_or_create` e `inherit_tax` (idempotentes).
+`node --test tools/restep-mcp/test.mjs` (or `node tools/restep-mcp/test.mjs`) checks
+per-origin credentials, redirects, loops, link schemes and the rejection of writes outside the
+origin without opening ports; and, end to end over stdio, draft 6 against the reference server
+(port 8961) and a mock server (8962): version with a suffix, another major version, the `shop`
+singleton, unknown values, `id_from`, `anonymous: false` and `inherit` depending on the declared
+draft. Against the reference it also tests the `reviews` subcollection with `parent_ids` (and its
+`404` without a book), `include` with depth 2 and its local errors, the `highlight` relation
+followed through its `href`, the polymorphic `showcase` through its `type`, and the actions
+`low_stock` (collection `GET`), `restock` (item `POST` with `input`, and its `422`),
+`find_or_create` and `inherit_tax` (idempotent).
 
-## Código y avisos
+## Code and issues
 
-Código y avisos: <https://github.com/restep-spec/restep-mcp>. Ese repositorio se genera desde la web de
-Restep, donde la herramienta se desarrolla junto a la [especificación](https://restep.wubytes.com/1/) y el servidor de
-referencia: `vendor/` y `schema/` son copias de la web para que las pruebas funcionen solas.
+Code and issues: <https://github.com/restep-spec/restep-mcp>. That repository is generated from the Restep
+site, where the tool is developed alongside the [specification](https://restep.wubytes.com/1/) and the reference
+server: `vendor/` and `schema/` are copies from the site so the tests run on their own.
 
-Licencia MIT.
+MIT licensed.

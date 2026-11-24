@@ -1,7 +1,7 @@
 {
   "name": "restep-mcp",
   "version": "0.2.0",
-  "description": "Servidor MCP para cualquier API Restep 1: herramientas genéricas construidas a partir de su documento de descubrimiento",
+  "description": "MCP server for any Restep 1 API: generic tools built from its discovery document",
   "type": "module",
   "bin": {
     "restep-mcp": "restep-mcp.mjs"
